@@ -17,12 +17,6 @@ body:
       placeholder: "45.6"
     validations:
       required: true
-  - type: input
-    id: base-model
-    attributes:
-      label: Base Model
-      description: >
-        기반이 된 모델이 있다면, Github Link를 기록해주세요.
 
   - type: textarea
     id: desc
@@ -32,6 +26,13 @@ body:
         실험 내용에 대해 자세히 작성해주세요!
     validations:
       required: true
+      
+  - type: input
+    id: base-model
+    attributes:
+      label: Base Model
+      description: >
+        기반이 된 모델이 있다면, Github Link를 기록해주세요.
 
   - type: markdown
     attributes:
