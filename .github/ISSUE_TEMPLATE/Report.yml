@@ -3,37 +3,37 @@ description: 실험에 대한 설명과 리더보드 성능을 기록해주세�
 labels: [Report]
 
 body:
-- type: input
-  id: EM
-  attributes:
-    label: EM
-    placeholder: "12.3"
-  validations:
-    required: true
-- type: input
-  id: F1
-  attributes:
-    label: F1
-    placeholder: "45.6"
-  validations:
-    required: true
-- type: input
-  id: base-model
-  attributes:
-    label: Base Model
-    description: >
-      기반이 된 모델이 있다면, Github Link를 기록해주세요.
-  
-- type: textarea
-  id: desc
-  attributes:
-    label: Description
-    description: >
-      실험 내용에 대해 자세히 작성해주세요!
-  validations:
-    required: true
-    
-- type: markdown
-  attributes:
-    value: >
-      수고하셨습니다!
+  - type: input
+    id: EM
+    attributes:
+      label: EM
+      placeholder: "12.3"
+    validations:
+      required: true
+  - type: input
+    id: F1
+    attributes:
+      label: F1
+      placeholder: "45.6"
+    validations:
+      required: true
+  - type: input
+    id: base-model
+    attributes:
+      label: Base Model
+      description: >
+        기반이 된 모델이 있다면, Github Link를 기록해주세요.
+
+  - type: textarea
+    id: desc
+    attributes:
+      label: Description
+      description: >
+        실험 내용에 대해 자세히 작성해주세요!
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: >
+        수고하셨습니다!
