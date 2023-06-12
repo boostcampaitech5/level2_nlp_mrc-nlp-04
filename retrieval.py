@@ -19,7 +19,7 @@ def timer(name):
     print(f"[{name}] done in {time.time() - t0:.3f} s")
 
 class Retrieval:
-    def __init__(self, name_index: str, path_data: str, path_context: str):
+    def __init__(self, name_index: str, path_data: str, path_context: str, vectorizer):
 
         """
         Arguments:
@@ -30,18 +30,13 @@ class Retrieval:
 
             context_path:
                 Passage들이 묶여있는 파일명입니다.
+                path_data/context_path가 존재해야합니다.
 
-            path_data/context_path가 존재해야합니다.
+            vectorizer:
+                Passage를 embedding 시킬때 사용되는 함수입니다.
 
         Summary:
-            Passage 파일을 불러와 객체에 저장해줍니다. 
-
-        Note:
-            상속받게 되는 class는 다음 변수를 추가로 선언해주어야 합니다. 
-            self.vertorizer: TF-IDF와 같은 vector 변환 객체를 선언해주어야 합니다. 
-
-            상속받게 되는 class는 다음 함수를 실행해야 합니다. 
-            self.get_embedding: Embedding된 변수를 저장 혹은 불러오기를 수행 합니다. 
+            Passage 파일을 불러와 객체에 저장해줍니다.
         """
 
         self.name_index = name_index
@@ -60,7 +55,11 @@ class Retrieval:
         
         # 상속받은 class에서 필수로 필요한 변수를 미리 선언해두었습니다. 
         # Passage를 embedding 시킬때 사용되는 함수를 선언하여야 합니다. 
-        self.vertorizer = None
+        self.vertorizer = vectorizer
+
+        # 필수 함수 호출.
+        self.get_embedding(self.vertorizer.fit_transform(self.contexts))
+        self.build_faiss()
 
         # 함수 사용 여부 확인용 변수. 
         self._is_call_get_embedding = False
@@ -402,20 +401,11 @@ class Retrieval:
         assert self.vertorizer != None, "Vectorizer가 선언되지 않았습니다. ex) TF-IDF..."
 
 class SparseRetrieval(Retrieval):
-    def __init__(self, fn_tokenize, 
+    def __init__(self, vectorizer,
                 path_data: Optional[str] = "./input/data/", 
                 context_path: Optional[str] = "wikipedia_documents.json",):
-        super().__init__("td-idf_sparse", path_data, context_path)
+        super().__init__("td-idf_sparse", path_data, context_path, vectorizer)
         print("done")
-        
-        # Transform by vectorizer
-        self.vertorizer = TfidfVectorizer(
-            tokenizer=fn_tokenize, ngram_range=(1, 2), max_features=50000,
-        )
-
-        # 필수 함수 호출. 
-        self.get_embedding(self.vertorizer.fit_transform(self.contexts))
-        self.build_faiss()
 
     def transform(self, queries: List) -> np.ndarray:
         """
