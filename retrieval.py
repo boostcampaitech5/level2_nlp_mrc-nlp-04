@@ -20,17 +20,18 @@ def timer(name):
 
 class Retrieval:
     def __init__(self, name_index: str, path_data: str, path_context: str):
+
         """
         Arguments:
             name_index:
                 Indexing 된 정보를 저장 할 때 사용될 이름 입니다. 
-            data_path:
+            path_data:
                 데이터가 보관되어 있는 경로입니다.
 
             context_path:
                 Passage들이 묶여있는 파일명입니다.
 
-            data_path/context_path가 존재해야합니다.
+            path_data/context_path가 존재해야합니다.
 
         Summary:
             Passage 파일을 불러와 객체에 저장해줍니다. 
@@ -44,6 +45,8 @@ class Retrieval:
         """
 
         self.name_index = name_index
+        self.path_data = path_data
+        self.path_context = path_context
 
         with open(os.path.join(path_data, path_context), "r", encoding="utf-8") as f:
             wiki = json.load(f)
@@ -80,8 +83,8 @@ class Retrieval:
         # Pickle을 저장합니다.
         pickle_name = f"sparse_embedding.bin"
         tfidfv_name = f"tfidv.bin"
-        emd_path = os.path.join(self.data_path, pickle_name)
-        tfidfv_path = os.path.join(self.data_path, tfidfv_name)
+        emd_path = os.path.join(self.path_data, pickle_name)
+        tfidfv_path = os.path.join(self.path_data, tfidfv_name)
 
         if os.path.isfile(emd_path) and os.path.isfile(tfidfv_path):
             with open(emd_path, "rb") as file:
@@ -91,7 +94,7 @@ class Retrieval:
             print("Embedding pickle load.")
         else:
             assert p_embedding != None, "이전에 실행시킨 기록이 없습니다. p_embedding를 설정해주시기 바랍니다. "
-            assert type(p_embedding) == np.ndarray, "p_embedding는 np.ndarray type이여야 합니다. "
+            # assert type(p_embedding) == np.ndarray, "p_embedding는 np.ndarray type이여야 합니다. "
 
             print("Build passage embedding")
             self.p_embedding = p_embedding
@@ -121,7 +124,7 @@ class Retrieval:
         """
 
         indexer_name = f"faiss_clusters_{self.name_index}_{num_clusters}.index"
-        indexer_path = os.path.join(self.data_path, indexer_name)
+        indexer_path = os.path.join(self.path_data, indexer_name)
 
         if os.path.isfile(indexer_path):
             print("Load Saved Faiss Indexer.")
@@ -261,6 +264,7 @@ class Retrieval:
             doc_indices.append(sorted_result.tolist()[:k])
         return doc_scores, doc_indices
     
+
     def retrieve_faiss(
         self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1
     ) -> Union[Tuple[List, List], pd.DataFrame]:
@@ -328,6 +332,7 @@ class Retrieval:
 
             return pd.DataFrame(total)
         
+
     def get_relevant_doc_faiss(
         self, query: str, k: Optional[int] = 1
     ) -> Tuple[List, List]:
@@ -353,6 +358,7 @@ class Retrieval:
 
         return D.tolist()[0], I.tolist()[0]
 
+
     def get_relevant_doc_bulk_faiss(
         self, queries: List, k: Optional[int] = 1
     ) -> Tuple[List, List]:
@@ -377,11 +383,14 @@ class Retrieval:
 
         return D.tolist(), I.tolist()
 
-    def __init_subclass__(self):
+
+    def __post__(self):
+
         """
         Summary:
             자식 class의 선언이 올바르게 되었는지 확인하는 함수 입니다. 
         """
+
         # 함수 call 확인. 
         assert self._is_call_get_embedding == True, "함수 get_embedding가 실행되지 않았습니다. "
         assert self._is_call_build_faiss == True, "함수 build_faiss가 실행되지 않았습니다. "
@@ -405,8 +414,8 @@ class SparseRetrieval(Retrieval):
         )
 
         # 필수 함수 호출. 
-        self.build_faiss()
         self.get_embedding(self.vertorizer.fit_transform(self.contexts))
+        self.build_faiss()
 
     def transform(self, queries: List) -> np.ndarray:
         """
@@ -418,3 +427,75 @@ class SparseRetrieval(Retrieval):
         """
         return self.vertorizer.transform(queries)
     
+# 실행 시키기 위해 다음의 옵션을 이용하여 실행시키시오. 
+# --dataset_name=../input/data/train_dataset --model_name_or_path=bert-base-multilingual-cased --path_data=../input/data --context_path=wikipedia_documents.json
+if __name__ == "__main__":
+
+    import argparse
+
+    parser = argparse.ArgumentParser(description="")
+    parser.add_argument(
+        "--dataset_name", metavar="./data/train_dataset", type=str, help=""
+    )
+    parser.add_argument(
+        "--model_name_or_path",
+        metavar="bert-base-multilingual-cased",
+        type=str,
+        help="",
+    )
+    parser.add_argument("--path_data", metavar=".input/data", type=str, help="")
+    parser.add_argument(
+        "--context_path", metavar="wikipedia_documents", type=str, help=""
+    )
+    parser.add_argument("--use_faiss", metavar=False, type=bool, help="")
+
+    args = parser.parse_args()
+
+    # Test sparse
+    print(args)
+    org_dataset = load_from_disk(args.dataset_name)
+    full_ds = concatenate_datasets(
+        [
+            org_dataset["train"].flatten_indices(),
+            org_dataset["validation"].flatten_indices(),
+        ]
+    )  # train dev 를 합친 4192 개 질문에 대해 모두 테스트
+    print("*" * 40, "query dataset", "*" * 40)
+    print(full_ds)
+
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=False,)
+
+    retriever = SparseRetrieval(
+        tokenizer.tokenize,
+        args.path_data,
+        args.context_path,
+    )
+
+    query = "대통령을 포함한 미국의 행정부 견제권을 갖는 국가 기관은?"
+
+    if args.use_faiss:
+
+        # test single query
+        with timer("single query by faiss"):
+            scores, indices = retriever.retrieve_faiss(query)
+
+        # test bulk
+        with timer("bulk query by exhaustive search"):
+            df = retriever.retrieve_faiss(full_ds)
+            df["correct"] = df["original_context"] == df["context"]
+
+            print("correct retrieval result by faiss", df["correct"].sum() / len(df))
+
+    else:
+        with timer("bulk query by exhaustive search"):
+            df = retriever.retrieve(full_ds)
+            df["correct"] = df["original_context"] == df["context"]
+            print(
+                "correct retrieval result by exhaustive search",
+                df["correct"].sum() / len(df),
+            )
+
+        with timer("single query by exhaustive search"):
+            scores, indices = retriever.retrieve(query)
