@@ -2,9 +2,11 @@ import re
 import sys
 import json
 import requests
+import argparse
+
 from requests.structures import CaseInsensitiveDict
 
-def main():
+def main(title):
 	with open("body.txt", "r") as f:
 		text = f.read()
 	label = re.findall(r'###\s(.*)', text)
@@ -103,6 +105,7 @@ def main():
 		}'''
 
 	query = json.loads(query_json)
+	query['properties']['이름']['title'][0]['text']['content'] = title
 	query['properties']['EM']['number'] = float(value['EM'])
 	query['properties']['F1']['number'] = float(value['F1'])
 	query['children'][1]['paragraph']['rich_text'][0]['text']['content'] = value['Description']
@@ -125,4 +128,8 @@ def main():
 		return
 
 if __name__ == "__main__":
-	main()
+	parser = argparse.ArgumentParser()
+	parser.add_argument("--title", required=True, type=str, default="Default Title")
+	args = parser.parse_args()
+
+	main(title=args.title)
