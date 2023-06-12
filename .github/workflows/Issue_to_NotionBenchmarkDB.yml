@@ -37,6 +37,6 @@ jobs:
         run: |
           echo -e "${{github.event.issue.body}}" > body.txt
           ls -al
-          python github_utils/markdown_to_notion.py --title ${{github.event.issue.title}}
+          python github_utils/markdown_to_notion.py --title "${{github.event.issue.title}}"
           rm body.txt
 
