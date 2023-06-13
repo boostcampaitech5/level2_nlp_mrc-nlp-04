@@ -32,8 +32,8 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
-from utils_qa import check_no_error, postprocess_qa_predictions
-from utils_qa import run_mrc
+# from utils_qa import check_no_error, postprocess_qa_predictions
+from utils import run_mrc_inference
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ def main():
 
     # eval or predict mrc model
     if training_args.do_eval or training_args.do_predict:
-        run_mrc(data_args, training_args, model_args, datasets, tokenizer, model)
+        run_mrc_inference(data_args, training_args, model_args, datasets, tokenizer, model)
 
 def run_retrieval(
     tokenize_fn: Callable[[str], List[str]],
