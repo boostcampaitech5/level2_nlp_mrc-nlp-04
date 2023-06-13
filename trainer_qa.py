@@ -109,9 +109,7 @@ class QuestionAnsweringTrainer(Trainer):
                 type=test_dataset.format["type"],
                 columns=list(test_dataset.features.keys()),
             )
-        '''
-        self.post_process_function = 
-        '''
+
         predictions = self.post_process_function(
             test_examples, test_dataset, output.predictions, self.args, self.data_args, self.eval_examples
         )
