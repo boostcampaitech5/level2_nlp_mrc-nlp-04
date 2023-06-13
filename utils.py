@@ -160,32 +160,8 @@ def prepare_validation_features(examples,
             ]
         return tokenized_examples
 
-'''
-train_dataset = train_dataset.map(
-    lambda example: prepare_train_features(
-        example,
-        tokenizer,
-        question_column_name,
-        context_column_name,
-        answer_column_name,
-        pad_on_right,
-        max_seq_length,
-        data_args
-    ),
-    batched=True,
-    num_proc=data_args.preprocessing_num_workers,
-    remove_columns=column_names,
-    load_from_cache_file=not data_args.overwrite_cache,
-)
-'''
 
-# Post-processing
-def post_processing_function(examples
-                            #  features, predictions, training_args,
-                            #  data_args: DataTrainingArguments, 
-                            #  answer_column_name,
-                            #  datasets
-                            ):
+def post_processing_function(examples, features, predictions, training_args, data_args, val_datasets):
     # Post-processing: start logits과 end logits을 original context의 정답과 match시킵니다.
     predictions = postprocess_qa_predictions(
         examples=examples,
@@ -202,9 +178,13 @@ def post_processing_function(examples
         return formatted_predictions
 
     elif training_args.do_eval:
+
+        column_names = val_datasets.column_names
+        answer_column_name = "answers" if "answers" in column_names else column_names[2]
+        
         references = [
             {"id": ex["id"], "answers": ex[answer_column_name]}
-            for ex in datasets["validation"]
+            for ex in val_datasets
         ]
         return EvalPrediction(
             predictions=formatted_predictions, label_ids=references
@@ -680,7 +660,7 @@ def run_mrc_inference(
     # Validation Feature 생성
     eval_dataset = eval_dataset.map(
         lambda x: prepare_validation_features(
-                                examples = x
+                                examples = x,
                                 tokenizer = tokenizer,
                                 question_column_name = question_column_name, 
                                 context_column_name = context_column_name,
@@ -713,18 +693,12 @@ def run_mrc_inference(
         eval_examples=datasets["validation"],
         tokenizer=tokenizer,
         data_collator=data_collator,
-        post_process_function= lambda x :post_processing_function(
-                                                        examples = x
-                                                        features = features, 
-                                                        predictions = predictions, 
-                                                        training_args = training_args,
-                                                        data_args = data_args, 
-                                                        answer_column_name = answer_column_name,
-                                                        datasets = datasets
-                                                        ),
+        post_process_function= post_processing_function,
         compute_metrics=compute_metrics,
+        data_args=data_args,
     )
-
+    
+    
     logger.info("*** Evaluate ***")
 
     #### eval dataset & eval example - predictions.json 생성됨
