@@ -12,68 +12,64 @@ from datasets import Dataset, concatenate_datasets, load_from_disk
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm.auto import tqdm
 
+
 @contextmanager
 def timer(name):
     t0 = time.time()
     yield
     print(f"[{name}] done in {time.time() - t0:.3f} s")
 
-class Retrieval:
-    def __init__(self, name_index: str, path_data: str, path_context: str):
+
+class SparseRetrieval:
+    def __init__(
+        self,
+        tokenize_fn,
+        data_path: Optional[str] = "../data/",
+        context_path: Optional[str] = "wikipedia_documents.json",
+    ) -> None:
 
         """
         Arguments:
-            name_index:
-                Indexing 된 정보를 저장 할 때 사용될 이름 입니다. 
-            path_data:
+            tokenize_fn:
+                기본 text를 tokenize해주는 함수입니다.
+                아래와 같은 함수들을 사용할 수 있습니다.
+                - lambda x: x.split(' ')
+                - Huggingface Tokenizer
+                - konlpy.tag의 Mecab
+
+            data_path:
                 데이터가 보관되어 있는 경로입니다.
 
             context_path:
                 Passage들이 묶여있는 파일명입니다.
 
-            path_data/context_path가 존재해야합니다.
+            data_path/context_path가 존재해야합니다.
 
         Summary:
-            Passage 파일을 불러와 객체에 저장해줍니다. 
-
-        Note:
-            상속받게 되는 class는 다음 변수를 추가로 선언해주어야 합니다. 
-            self.vertorizer: TF-IDF와 같은 vector 변환 객체를 선언해주어야 합니다. 
-
-            상속받게 되는 class는 다음 함수를 실행해야 합니다. 
-            self.get_embedding: Embedding된 변수를 저장 혹은 불러오기를 수행 합니다. 
+            Passage 파일을 불러오고 TfidfVectorizer를 선언하는 기능을 합니다.
         """
 
-        self.name_index = name_index
-        self.path_data = path_data
-        self.path_context = path_context
-
-        with open(os.path.join(path_data, path_context), "r", encoding="utf-8") as f:
+        self.data_path = data_path
+        with open(os.path.join(data_path, context_path), "r", encoding="utf-8") as f:
             wiki = json.load(f)
 
         self.contexts = list(
             dict.fromkeys([v["text"] for v in wiki.values()])
         )  # set 은 매번 순서가 바뀌므로
         print(f"Lengths of unique contexts : {len(self.contexts)}")
-
         self.ids = list(range(len(self.contexts)))
-        
-        # 상속받은 class에서 필수로 필요한 변수를 미리 선언해두었습니다. 
-        # Passage를 embedding 시킬때 사용되는 함수를 선언하여야 합니다. 
-        self.vertorizer = None
 
-        # 함수 사용 여부 확인용 변수. 
-        self._is_call_get_embedding = False
-        self._is_call_build_faiss = False
+        # Transform by vectorizer
+        self.tfidfv = TfidfVectorizer(
+            tokenizer=tokenize_fn, ngram_range=(1, 2), max_features=50000,
+        )
 
+        self.p_embedding = None  # get_sparse_embedding()로 생성합니다
+        self.indexer = None  # build_faiss()로 생성합니다.
 
-    def get_embedding(self, p_embedding: np.ndarray=None, ) -> None:
+    def get_sparse_embedding(self) -> None:
 
         """
-        Arguments:
-            p_embedding:
-                임베딩된 paragraph NDArray 입니다. 
-
         Summary:
             Passage Embedding을 만들고
             TFIDF와 Embedding을 pickle로 저장합니다.
@@ -83,29 +79,24 @@ class Retrieval:
         # Pickle을 저장합니다.
         pickle_name = f"sparse_embedding.bin"
         tfidfv_name = f"tfidv.bin"
-        emd_path = os.path.join(self.path_data, pickle_name)
-        tfidfv_path = os.path.join(self.path_data, tfidfv_name)
+        emd_path = os.path.join(self.data_path, pickle_name)
+        tfidfv_path = os.path.join(self.data_path, tfidfv_name)
 
         if os.path.isfile(emd_path) and os.path.isfile(tfidfv_path):
             with open(emd_path, "rb") as file:
                 self.p_embedding = pickle.load(file)
             with open(tfidfv_path, "rb") as file:
-                self.vertorizer = pickle.load(file)
+                self.tfidfv = pickle.load(file)
             print("Embedding pickle load.")
         else:
-            assert p_embedding != None, "이전에 실행시킨 기록이 없습니다. p_embedding를 설정해주시기 바랍니다. "
-            # assert type(p_embedding) == np.ndarray, "p_embedding는 np.ndarray type이여야 합니다. "
-
             print("Build passage embedding")
-            self.p_embedding = p_embedding
+            self.p_embedding = self.tfidfv.fit_transform(self.contexts)
             print(self.p_embedding.shape)
             with open(emd_path, "wb") as file:
                 pickle.dump(self.p_embedding, file)
             with open(tfidfv_path, "wb") as file:
-                pickle.dump(self.vertorizer, file)
+                pickle.dump(self.tfidfv, file)
             print("Embedding pickle saved.")
-
-        self._is_call_get_embedding = True
 
     def build_faiss(self, num_clusters=64) -> None:
 
@@ -123,9 +114,8 @@ class Retrieval:
             제일 적절한 것을 제외하고 모두 삭제하는 것을 권장합니다.
         """
 
-        indexer_name = f"faiss_clusters_{self.name_index}_{num_clusters}.index"
-        indexer_path = os.path.join(self.path_data, indexer_name)
-
+        indexer_name = f"faiss_clusters{num_clusters}.index"
+        indexer_path = os.path.join(self.data_path, indexer_name)
         if os.path.isfile(indexer_path):
             print("Load Saved Faiss Indexer.")
             self.indexer = faiss.read_index(indexer_path)
@@ -144,8 +134,6 @@ class Retrieval:
             self.indexer.add(p_emb)
             faiss.write_index(self.indexer, indexer_path)
             print("Faiss Indexer Saved.")
-
-        self._is_call_build_faiss = True
 
     def retrieve(
         self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1
@@ -170,6 +158,8 @@ class Retrieval:
                 Ground Truth가 있는 Query (train/valid) -> 기존 Ground Truth Passage를 같이 반환합니다.
                 Ground Truth가 없는 Query (test) -> Retrieval한 Passage만 반환합니다.
         """
+
+        assert self.p_embedding is not None, "get_sparse_embedding() 메소드를 먼저 수행해줘야합니다."
 
         if isinstance(query_or_dataset, str):
             doc_scores, doc_indices = self.get_relevant_doc(query_or_dataset, k=topk)
@@ -209,7 +199,7 @@ class Retrieval:
 
             cqas = pd.DataFrame(total)
             return cqas
-        
+
     def get_relevant_doc(self, query: str, k: Optional[int] = 1) -> Tuple[List, List]:
 
         """
@@ -222,10 +212,11 @@ class Retrieval:
             vocab 에 없는 이상한 단어로 query 하는 경우 assertion 발생 (예) 뙣뙇?
         """
 
-        assert self.transform != None, "Query를 변환해주는 함수 self.transform가 선언되어있지 않습니다. "
-
         with timer("transform"):
-            query_vec = self.transform([query])
+            query_vec = self.tfidfv.transform([query])
+        assert (
+            np.sum(query_vec) != 0
+        ), "오류가 발생했습니다. 이 오류는 보통 query에 vectorizer의 vocab에 없는 단어만 존재하는 경우 발생합니다."
 
         with timer("query ex search"):
             result = query_vec * self.p_embedding.T
@@ -236,7 +227,7 @@ class Retrieval:
         doc_score = result.squeeze()[sorted_result].tolist()[:k]
         doc_indices = sorted_result.tolist()[:k]
         return doc_score, doc_indices
-    
+
     def get_relevant_doc_bulk(
         self, queries: List, k: Optional[int] = 1
     ) -> Tuple[List, List]:
@@ -251,7 +242,10 @@ class Retrieval:
             vocab 에 없는 이상한 단어로 query 하는 경우 assertion 발생 (예) 뙣뙇?
         """
 
-        query_vec = self.transform(queries)
+        query_vec = self.tfidfv.transform(queries)
+        assert (
+            np.sum(query_vec) != 0
+        ), "오류가 발생했습니다. 이 오류는 보통 query에 vectorizer의 vocab에 없는 단어만 존재하는 경우 발생합니다."
 
         result = query_vec * self.p_embedding.T
         if not isinstance(result, np.ndarray):
@@ -263,7 +257,6 @@ class Retrieval:
             doc_scores.append(result[i, :][sorted_result].tolist()[:k])
             doc_indices.append(sorted_result.tolist()[:k])
         return doc_scores, doc_indices
-    
 
     def retrieve_faiss(
         self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1
@@ -289,6 +282,8 @@ class Retrieval:
                 Ground Truth가 없는 Query (test) -> Retrieval한 Passage만 반환합니다.
             retrieve와 같은 기능을 하지만 faiss.indexer를 사용합니다.
         """
+
+        assert self.indexer is not None, "build_faiss()를 먼저 수행해주세요."
 
         if isinstance(query_or_dataset, str):
             doc_scores, doc_indices = self.get_relevant_doc_faiss(
@@ -331,7 +326,6 @@ class Retrieval:
                 total.append(tmp)
 
             return pd.DataFrame(total)
-        
 
     def get_relevant_doc_faiss(
         self, query: str, k: Optional[int] = 1
@@ -358,7 +352,6 @@ class Retrieval:
 
         return D.tolist()[0], I.tolist()[0]
 
-
     def get_relevant_doc_bulk_faiss(
         self, queries: List, k: Optional[int] = 1
     ) -> Tuple[List, List]:
@@ -373,7 +366,7 @@ class Retrieval:
             vocab 에 없는 이상한 단어로 query 하는 경우 assertion 발생 (예) 뙣뙇?
         """
 
-        query_vecs = self.transform(queries)
+        query_vecs = self.tfidfv.transform(queries)
         assert (
             np.sum(query_vecs) != 0
         ), "오류가 발생했습니다. 이 오류는 보통 query에 vectorizer의 vocab에 없는 단어만 존재하는 경우 발생합니다."
@@ -384,51 +377,6 @@ class Retrieval:
         return D.tolist(), I.tolist()
 
 
-    def __post__(self):
-
-        """
-        Summary:
-            자식 class의 선언이 올바르게 되었는지 확인하는 함수 입니다. 
-        """
-
-        # 함수 call 확인. 
-        assert self._is_call_get_embedding == True, "함수 get_embedding가 실행되지 않았습니다. "
-        assert self._is_call_build_faiss == True, "함수 build_faiss가 실행되지 않았습니다. "
-
-        # 함수 선언 확인. 
-        assert self.transform != None, "Query를 변환해주는 함수 self.transform가 선언되어있지 않습니다. "
-
-        # 변수 선언 확인. 
-        assert self.vertorizer != None, "Vectorizer가 선언되지 않았습니다. ex) TF-IDF..."
-
-class SparseRetrieval(Retrieval):
-    def __init__(self, fn_tokenize, 
-                path_data: Optional[str] = "./input/data/", 
-                context_path: Optional[str] = "wikipedia_documents.json",):
-        super().__init__("td-idf_sparse", path_data, context_path)
-        print("done")
-        
-        # Transform by vectorizer
-        self.vertorizer = TfidfVectorizer(
-            tokenizer=fn_tokenize, ngram_range=(1, 2), max_features=50000,
-        )
-
-        # 필수 함수 호출. 
-        self.get_embedding(self.vertorizer.fit_transform(self.contexts))
-        self.build_faiss()
-
-    def transform(self, queries: List) -> np.ndarray:
-        """
-        Arguments:
-            queries (List):
-
-        Summary:
-            정의된 vertorizer를 이용하여 query 리스트를 변환하여 돌려줍니다. 
-        """
-        return self.vertorizer.transform(queries)
-    
-# 실행 시키기 위해 다음의 옵션을 이용하여 실행시키시오. 
-# --dataset_name=../input/data/train_dataset --model_name_or_path=bert-base-multilingual-cased --path_data=../input/data --context_path=wikipedia_documents.json
 if __name__ == "__main__":
 
     import argparse
@@ -443,7 +391,7 @@ if __name__ == "__main__":
         type=str,
         help="",
     )
-    parser.add_argument("--path_data", metavar=".input/data", type=str, help="")
+    parser.add_argument("--data_path", metavar="./data", type=str, help="")
     parser.add_argument(
         "--context_path", metavar="wikipedia_documents", type=str, help=""
     )
@@ -452,7 +400,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Test sparse
-    print(args)
     org_dataset = load_from_disk(args.dataset_name)
     full_ds = concatenate_datasets(
         [
@@ -468,9 +415,9 @@ if __name__ == "__main__":
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=False,)
 
     retriever = SparseRetrieval(
-        tokenizer.tokenize,
-        args.path_data,
-        args.context_path,
+        tokenize_fn=tokenizer.tokenize,
+        data_path=args.data_path,
+        context_path=args.context_path,
     )
 
     query = "대통령을 포함한 미국의 행정부 견제권을 갖는 국가 기관은?"
