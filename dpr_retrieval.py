@@ -41,7 +41,7 @@ class DenseRetrieval:
         학습과 추론에 사용될 여러 셋업을 마쳐봅시다.
         '''
         if num_sample is None:
-            num_sample = 1e10
+            num_sample = int(1e9)
         self.args = args
         train_dataset = load_from_disk("/opt/ml/input/data/train_dataset")
         self.train_dataset = train_dataset['train'][:num_sample]
@@ -109,12 +109,6 @@ class DenseRetrieval:
             wiki_dataset, batch_size=self.args.per_device_train_batch_size, drop_last=False)
 
 
-    def train(self):
-        args = self.args
-        
-    def train(self):
-        args = self.args
-
     def train(self, override: bool=False):
         '''
         p_encoder와 q_encoder를 학습합니다.
@@ -160,7 +154,7 @@ class DenseRetrieval:
 
         train_iterator = tqdm(range(int(self.args.num_train_epochs)), desc="Epoch")
         for _ in train_iterator:
-            with tqdm(self.train_dataloader, unit="batch") as tepoch:
+            with tqdm(self.train_dataloader, desc='train', unit="batch") as tepoch:
                 for batch in tepoch:
                     self.p_encoder.train()
                     self.q_encoder.train()
@@ -215,7 +209,7 @@ class DenseRetrieval:
 
     def get_p_embedding(self, override: bool=False):
         '''
-        전체 위키피디아 5만 7천개를 바탕으로 p_embs를 만듭니다.
+        전체 위키피디아 5만 7천개 혹은 num_sample로 p_embs를 만듭니다.
         저장된 피클이 없다면 만든 뒤 저장하고, 있다면 로드합니다.
         '''
         emb_name = f"dpr_p_embedding.bin"
@@ -254,14 +248,14 @@ class DenseRetrieval:
 
         if os.path.isfile(emb_path) and (not override):
             with open(emb_path, "rb") as file:
-                self.p_embs = pickle.load(file)
+                self.testq_embs = pickle.load(file)
             print("Embedding pickle load.")
         else:
             with torch.no_grad():
                 self.q_encoder.eval()
 
                 self.testq_embs = []
-                for batch in tqdm(self.test_dataloader, desc='700_q_embs'):
+                for batch in tqdm(self.test_dataloader, desc='600_q_embs'):
                     p_inputs = {
                         'input_ids': batch[0].to(self.args.device),
                         'attention_mask': batch[1].to(self.args.device),
@@ -285,7 +279,7 @@ class DenseRetrieval:
 
         if os.path.isfile(emb_path) and (not override):
             with open(emb_path, "rb") as file:
-                self.p_embs = pickle.load(file)
+                self.validq_embs = pickle.load(file)
             print("Embedding pickle load.")
         else:
             with torch.no_grad():
@@ -305,8 +299,6 @@ class DenseRetrieval:
             with open(emb_path, 'wb') as file:
                 pickle.dump(self.validq_embs, file)
             print("Embedding pickle saved.")
-
-
 
     def retrieve(
         self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1
@@ -378,13 +370,14 @@ class DenseRetrieval:
         sorted_result = torch.argsort(result, dim=1, descending=True).squeeze()
         doc_score = result.squeeze()[sorted_result][:k]
         doc_indices = sorted_result.tolist()[:k]
+        print(doc_score, doc_indices)
         return doc_score, doc_indices
     
     def get_relevant_doc_bulk(self, query, k=1):
         if len(query)==240:
             print('current len is', len(query)) 
             q_embs = self.validq_embs
-        elif len(query)==700:
+        elif len(query)==600:
             print('current len is', len(query)) 
             q_embs = self.testq_embs
         else :
@@ -401,8 +394,6 @@ class DenseRetrieval:
 
         return doc_scores, doc_indices
     
-
-
 
 class BertEncoder(BertPreTrainedModel):
 
@@ -431,19 +422,19 @@ class BertEncoder(BertPreTrainedModel):
 
 if __name__ == '__main__':
     # 데이터셋과 모델은 아래와 같이 불러옵니다.
-    train_dataset = load_from_disk("/opt/ml/input/data/train_dataset")['validation']
+    train_dataset = load_from_disk("/opt/ml/input/data/test_dataset")['validation']
 
 
     # 메모리가 부족한 경우 일부만 사용하세요 !
-    num_sample = 20  # None or positive integer
+    num_sample = None  # None or positive integer
 
     args = TrainingArguments(
         output_dir="dense_retireval",
         evaluation_strategy="epoch",
-        learning_rate=3e-4,
+        learning_rate=1e-5,
         per_device_train_batch_size=16,
         per_device_eval_batch_size=16,
-        num_train_epochs=1,
+        num_train_epochs=5,
         weight_decay=0.01
     )
     model_checkpoint = 'klue/bert-base'
@@ -466,8 +457,8 @@ if __name__ == '__main__':
 
     # query = '대통령을 포함한 미국의 행정부 견제권을 갖는 국가 기관은?' #인덱스 0
     query = '카타카나는 일본어에서 사용하는 무슨 문자인가?'
-    # results = retriever.get_relevant_doc(query=query, k=num_sample)
-    results = retriever.retrieve(query_or_dataset=train_dataset, topk=4)
+    # results = retriever.retrieve(query_or_dataset=train_dataset, topk=4)
+    results = retriever.retrieve(query_or_dataset=query, topk=50)
     print('Now print results')
     try:
         # if results = df
@@ -475,3 +466,5 @@ if __name__ == '__main__':
     except:
         # if results = tuple(list, list)
         print(results)
+
+

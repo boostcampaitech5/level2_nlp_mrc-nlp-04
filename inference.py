@@ -90,9 +90,10 @@ def main():
 
     # True일 경우 : run passage retrieval
     if data_args.eval_retrieval:
-        datasets = run_sparse_retrieval(
-            tokenizer.tokenize, datasets, training_args, data_args,
-        )
+        # datasets = run_sparse_retrieval(
+        #     tokenizer.tokenize, datasets, training_args, data_args,
+        # )
+        datasets = run_dense_retrieval(tokenizer, model_args.model_name_or_path, datasets, data_args, training_args)
     
     print('test')
     
@@ -101,7 +102,60 @@ def main():
         run_mrc_inference(data_args, training_args, model_args, datasets, tokenizer, model)
         # run_mrc(data_args, training_args, model_args, datasets, tokenizer, model)
 
-        
+def run_dense_retrieval(tokenizer, model_checkpoint, datasets, data_args, training_args):
+    from dpr_retrieval import DenseRetrieval, BertEncoder
+    args = TrainingArguments(
+        output_dir="dense_retireval",
+        evaluation_strategy="epoch",
+        learning_rate=1e-5,
+        per_device_train_batch_size=16,
+        per_device_eval_batch_size=16,
+        num_train_epochs=5,
+        weight_decay=0.01
+    )
+    num_sample=None
+    p_encoder = BertEncoder.from_pretrained(model_checkpoint).to(args.device)
+    q_encoder = BertEncoder.from_pretrained(model_checkpoint).to(args.device)
+    retriever = DenseRetrieval(args=args,
+                            tokenizer=tokenizer, p_encoder=p_encoder, q_encoder=q_encoder,
+                            num_sample=num_sample
+                            )
+    retriever.train(override=False) # bert-base, 전체 train_dataset 기준 1에폭에 5분. 
+    retriever.get_p_embedding(override=False) # 1만 개에 1.2분
+    retriever.get_testq_embedding(override=False) #700개 - 빠름.
+    retriever.get_validq_embedding(override=False) #240개 - 빠름.
+    df = retriever.retrieve(query_or_dataset=datasets['validation'], topk=100)#data_args.top_k_retrieval)
+    # test data 에 대해선 정답이 없으므로 id question context 로만 데이터셋이 구성됩니다.
+    if training_args.do_predict:
+        f = Features(
+            {
+                "context": Value(dtype="string", id=None),
+                "id": Value(dtype="string", id=None),
+                "question": Value(dtype="string", id=None),
+            }
+        )
+
+    # train data 에 대해선 정답이 존재하므로 id question context answer 로 데이터셋이 구성됩니다.
+    elif training_args.do_eval:
+        f = Features(
+            {
+                "answers": Sequence(
+                    feature={
+                        "text": Value(dtype="string", id=None),
+                        "answer_start": Value(dtype="int32", id=None),
+                    },
+                    length=-1,
+                    id=None,
+                ),
+                "context": Value(dtype="string", id=None),
+                "id": Value(dtype="string", id=None),
+                "question": Value(dtype="string", id=None),
+            }
+        )
+    datasets = DatasetDict({"validation": Dataset.from_pandas(df, features=f)})
+    return datasets
+
+
 def run_retrieval(
     tokenize_fn: Callable[[str], List[str]],
     datasets: DatasetDict,
