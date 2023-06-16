@@ -1,5 +1,6 @@
 # from inference import main
 from train import train
+from inference import inference
 import argparse
 
 from transformers import HfArgumentParser, TrainingArguments
@@ -15,6 +16,5 @@ if __name__ == "__main__" :
 
     if custom_args.mode == "inference" :
         print("----- Inference -----")
-    #   # main()
-    
+        inference(model_args, data_args, training_args)
       
