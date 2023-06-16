@@ -108,12 +108,15 @@ def run_dense_retrieval(tokenizer, model_checkpoint, datasets, data_args, traini
         output_dir="dense_retireval",
         evaluation_strategy="epoch",
         learning_rate=1e-5,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
+        per_device_train_batch_size=20,
+        per_device_eval_batch_size=20,
         num_train_epochs=5,
         weight_decay=0.01
     )
     num_sample=None
+    model_checkpoint=model_checkpoint
+    ## 사전학습+파인튜닝된 train의 마지막 checkpoint에서 불러옵니다.
+    ## reader와 retriever의 모델을 다른 걸 쓰고 싶다면 달리 명시해야 합니다.
     p_encoder = BertEncoder.from_pretrained(model_checkpoint).to(args.device)
     q_encoder = BertEncoder.from_pretrained(model_checkpoint).to(args.device)
     retriever = DenseRetrieval(args=args,
@@ -124,7 +127,17 @@ def run_dense_retrieval(tokenizer, model_checkpoint, datasets, data_args, traini
     retriever.get_p_embedding(override=False) # 1만 개에 1.2분
     retriever.get_testq_embedding(override=False) #700개 - 빠름.
     retriever.get_validq_embedding(override=False) #240개 - 빠름.
-    df = retriever.retrieve(query_or_dataset=datasets['validation'], topk=100)#data_args.top_k_retrieval)
+    df = retriever.retrieve(query_or_dataset=datasets['validation'], topk=data_args.top_k_retrieval)
+    
+
+    if ('original_context' in df.columns) and ('answers' in df.columns):
+        # df.columns was ['question', 'id', 'context', 'original_context', 'answers']
+        df = df.drop(columns='original_context')
+        print(df['answers'][:20])
+        print(df['context'].head(20))
+    else:
+        print(df.head(20))
+    
     # test data 에 대해선 정답이 없으므로 id question context 로만 데이터셋이 구성됩니다.
     if training_args.do_predict:
         f = Features(

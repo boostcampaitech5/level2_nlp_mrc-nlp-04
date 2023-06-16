@@ -21,6 +21,7 @@ from transformers import (
     AdamW, get_linear_schedule_with_warmup,
     TrainingArguments,
 )
+from collections import deque
 
 
 def set_seed(random_seed):
@@ -118,11 +119,14 @@ class DenseRetrieval:
         q_name = f'q_encoder_statesdict'
         p_path = os.path.join('/opt/ml/input/data', p_name)
         q_path = os.path.join('/opt/ml/input/data', q_name)
+        print('@@ statedict', os.path.isfile(p_path),
+               os.path.isfile(q_path), (not override))
         if os.path.isfile(p_path) and os.path.isfile(q_path) and (not override):
             self.p_encoder.load_state_dict(torch.load(p_path))
             self.p_encoder.to(self.args.device)
             self.q_encoder.load_state_dict(torch.load(q_path))
             self.q_encoder.to(self.args.device)
+            print('encoder statedict loaded')
             return
         
         print('Training p_encoder&q_encoder starts')
@@ -199,10 +203,32 @@ class DenseRetrieval:
         torch.save(self.q_encoder.state_dict(), q_path)
 
 
-    def valid(self):
-        # todo
-        # print, top-k-retrieval-rate
+    def valid_rate(self, doc_indices, topk):
         pass
+        '''
+        '''
+        #todo
+        
+        # 밑의 코드의 v는 중복 제거 이전의 document_id이고
+        # doc_indices[i]는 중복 이후의 self.contexts의 id라서
+        # 서로 맞지가 않음
+        # if name main 맨 밑의 방식으로 구현함.
+
+        # if len(doc_indices) != 240:
+        #     print('NO valid rate printed')
+        #     return
+        # print('valid rate printed')
+        # temp = 0
+        # for i, v in enumerate(self.valid_dataset['document_id']):
+        #     print(v, doc_indices[i])
+        #     if v in doc_indices[i]:
+        #         temp += 1
+        # temp = temp/240
+        # print('topk =', topk, ', retrieval rate =', temp)
+        # print('valid rate printed')
+        # return 
+
+
     def build_faiss():
         # todo
         pass
@@ -256,12 +282,12 @@ class DenseRetrieval:
 
                 self.testq_embs = []
                 for batch in tqdm(self.test_dataloader, desc='600_q_embs'):
-                    p_inputs = {
+                    q_inputs = {
                         'input_ids': batch[0].to(self.args.device),
                         'attention_mask': batch[1].to(self.args.device),
                         'token_type_ids': batch[2].to(self.args.device)
                     }
-                    q_emb = self.q_encoder(**p_inputs).to('cpu')
+                    q_emb = self.q_encoder(**q_inputs).to('cpu')
                     self.testq_embs.append(q_emb)
             self.testq_embs = torch.cat(self.testq_embs, dim=0)
             print('@@ q_embs.shape is', self.testq_embs.shape)
@@ -287,12 +313,12 @@ class DenseRetrieval:
 
                 self.validq_embs = []
                 for batch in tqdm(self.valid_dataloader, desc='240_q_embs'):
-                    p_inputs = {
+                    q_inputs = {
                         'input_ids': batch[0].to(self.args.device),
                         'attention_mask': batch[1].to(self.args.device),
                         'token_type_ids': batch[2].to(self.args.device)
                     }
-                    q_emb = self.q_encoder(**p_inputs).to('cpu')
+                    q_emb = self.q_encoder(**q_inputs).to('cpu')
                     self.validq_embs.append(q_emb)
             self.validq_embs = torch.cat(self.validq_embs, dim=0)
             print('@@ q_embs.shape is', self.validq_embs.shape)
@@ -384,7 +410,7 @@ class DenseRetrieval:
             print('current len is', len(query)) ## 오류 확인
             raise Exception
 
-        result = torch.matmul(q_embs, torch.transpose(self.p_embs, 0, 1)) #(700, 768)
+        result = torch.matmul(q_embs, torch.transpose(self.p_embs, 0, 1)) #(700, 5만)
         doc_scores = []
         doc_indices = []
         for i in range(result.shape[0]):
@@ -422,7 +448,7 @@ class BertEncoder(BertPreTrainedModel):
 
 if __name__ == '__main__':
     # 데이터셋과 모델은 아래와 같이 불러옵니다.
-    train_dataset = load_from_disk("/opt/ml/input/data/test_dataset")['validation']
+    train_dataset = load_from_disk("/opt/ml/input/data/train_dataset")['validation']
 
 
     # 메모리가 부족한 경우 일부만 사용하세요 !
@@ -432,15 +458,15 @@ if __name__ == '__main__':
         output_dir="dense_retireval",
         evaluation_strategy="epoch",
         learning_rate=1e-5,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
-        num_train_epochs=5,
+        per_device_train_batch_size=20,
+        per_device_eval_batch_size=20,
+        num_train_epochs=2,
         weight_decay=0.01
     )
     model_checkpoint = 'klue/bert-base'
 
     # 혹시 위에서 사용한 encoder가 있다면 주석처리 후 진행해주세요 (CUDA ...)
-    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
+    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint, use_fast=True)
     p_encoder = BertEncoder.from_pretrained(model_checkpoint).to(args.device)
     q_encoder = BertEncoder.from_pretrained(model_checkpoint).to(args.device)
 
@@ -451,20 +477,32 @@ if __name__ == '__main__':
                             num_sample=num_sample
                             )
     retriever.train(override=True) # bert-base, 전체 train_dataset 기준 1에폭에 5분. 
-    retriever.get_p_embedding(override=True) # 1만 개에 1.2분
-    retriever.get_testq_embedding(override=True) #700개 - 빠름.
+    retriever.get_p_embedding(override=True) # 5.6만 개에 9분
+    retriever.get_testq_embedding(override=True) #600개 - 빠름.
     retriever.get_validq_embedding(override=True) #240개 - 빠름.
 
-    # query = '대통령을 포함한 미국의 행정부 견제권을 갖는 국가 기관은?' #인덱스 0
-    query = '카타카나는 일본어에서 사용하는 무슨 문자인가?'
-    # results = retriever.retrieve(query_or_dataset=train_dataset, topk=4)
-    results = retriever.retrieve(query_or_dataset=query, topk=50)
+    # query = '대통령을 포함한 미국의 행정부 견제권을 갖는 국가 기관은?' #인덱스 0은 아니고 13000 근처
+    # query = '카타카나는 일본어에서 사용하는 무슨 문자인가?' #인덱스 35
+    topk=10
+    results = retriever.retrieve(query_or_dataset=train_dataset, topk=topk)
+
     print('Now print results')
     try:
-        # if results = df
+        print('results = df')
         print(results.head())
     except:
-        # if results = tuple(list, list)
+        print('results = tuple(list, list)')
         print(results)
 
+    try:
+        results['rate'] = results.apply(lambda row: row['original_context'] in row['context'], axis=1)
+        print(f'topk is {topk}, rate is {100*sum(results["rate"])/240}%')
+    except:
+        print('topk retrieval rate can\'t be printed. It is not train-valid set')
 
+    #lr 1e-5, batch 20, epochs 3,
+    #topk, retrieval rate
+    #10, 82.916
+    #20, 89.583
+    #50, 93.333
+    #100,97.983
