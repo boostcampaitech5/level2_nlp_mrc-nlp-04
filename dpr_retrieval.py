@@ -234,7 +234,7 @@ class dprDenseRetrieval:
         전체 위키피디아 5만 7천개 혹은 num_sample로 p_embs를 만듭니다.
         저장된 피클이 없다면 만든 뒤 저장하고, 있다면 로드합니다.
         '''
-        emb_name = f"dpr_p_embedding.bin"
+        emb_name = f"p_embedding.bin"
         emb_path = os.path.join('/opt/ml/output/models/dpr', emb_name)
 
         if os.path.isfile(emb_path) and (not override):
@@ -265,7 +265,7 @@ class dprDenseRetrieval:
         test_dataset 600개로 q_embs를 만듭니다.
         저장된 피클이 없다면 만든 뒤 저장하고, 있다면 로드합니다.
         '''
-        emb_name = f"dpr_testq_embedding.bin"
+        emb_name = f"testq_embedding.bin"
         emb_path = os.path.join('/opt/ml/output/models/dpr', emb_name)
 
         if os.path.isfile(emb_path) and (not override):
@@ -296,7 +296,7 @@ class dprDenseRetrieval:
         valid_dataset 240개로 q_embs를 만듭니다.
         저장된 피클이 없다면 만든 뒤 저장하고, 있다면 로드합니다.
         '''
-        emb_name = f"dpr_validq_embedding.bin"
+        emb_name = f"validq_embedding.bin"
         emb_path = os.path.join('/opt/ml/output/models/dpr', emb_name)
 
         if os.path.isfile(emb_path) and (not override):

@@ -105,7 +105,7 @@ def inference(model_args, data_args, training_args):
         run_mrc(data_args, training_args, model_args, datasets, tokenizer, model)
     
 def run_dpr_retrieval(tokenizer, datasets, training_args, data_args, model_args):
-    print('Check settings for dpr training')
+    print('You should check settings for dpr training')
     args = TrainingArguments(
         output_dir="dense_retireval",
         evaluation_strategy="epoch",
@@ -117,7 +117,7 @@ def run_dpr_retrieval(tokenizer, datasets, training_args, data_args, model_args)
     )
     num_sample = None # 디버깅과 빠른 실행을 원한다면 100으로 설정하세요.
     num_pre_batch = 0 #pre-batch negatives에 사용될 개수입니다.
-    t_or_f = True #overide의 True, False 여부입니다.
+    t_or_f = False #overide의 True, False 여부입니다.
     topk = data_args.top_k_retrieval
     model_name = 'klue/bert-base'
     p_encoder = dprBertEncoder.from_pretrained(model_name).to(args.device)
