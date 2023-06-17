@@ -89,8 +89,15 @@ class DataTrainingArguments:
     use_faiss: bool = field(
         default=False, metadata={"help": "Whether to build with faiss"}
     )
+    inference_mode: str = field(
+        default='bm25',
+        metadata={'help': 'Define a mode to retrieve. Choose between "bm25", "base", "dpr"'}
+    )
     
 @dataclass
 class CustomArguments:
-    mode: str = "train"
+    mode: str = field(
+        default='train',
+        metadata={'help': 'Define a mode to enter using a main.py. Choose between "train" and "inference"'}
+    )
         

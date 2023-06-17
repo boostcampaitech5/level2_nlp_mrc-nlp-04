@@ -88,10 +88,17 @@ def inference(model_args, data_args, training_args):
 
     # True일 경우 : run passage retrieval
     if data_args.eval_retrieval:
-        datasets = run_sparse_retrieval(
-            tokenizer.tokenize, datasets, training_args, data_args, retri = 'bm25'
-        )
-
+        if data_args.inference_mode in ['bm25', 'base']:
+            datasets = run_sparse_retrieval(
+                tokenizer.tokenize, datasets, training_args, data_args, retri = data_args.inference_mode
+            )
+        elif data_args.inference_mode == 'dpr':
+            datasets = run_dpr_retrieval(
+                1234#1234
+            )
+        else:
+            raise Exception
+        
     # eval or predict mrc model
     if training_args.do_eval or training_args.do_predict:
         run_mrc(data_args, training_args, model_args, datasets, tokenizer, model)
