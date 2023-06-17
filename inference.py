@@ -21,6 +21,7 @@ from datasets import (
 )
 import evaluate
 from retrieval import BaseRetrieval, BM25
+from dpr_retrieval import dprDenseRetrieval, dprBertEncoder
 from trainer_qa import QuestionAnsweringTrainer
 from transformers import (
     AutoConfig,
@@ -92,9 +93,9 @@ def inference(model_args, data_args, training_args):
             datasets = run_sparse_retrieval(
                 tokenizer.tokenize, datasets, training_args, data_args, retri = data_args.inference_mode
             )
-        elif data_args.inference_mode == 'dpr':
+        elif data_args.inference_mode in ['dpr']:
             datasets = run_dpr_retrieval(
-                1234#1234
+                tokenizer, datasets, training_args, data_args, model_args
             )
         else:
             raise Exception
@@ -103,7 +104,69 @@ def inference(model_args, data_args, training_args):
     if training_args.do_eval or training_args.do_predict:
         run_mrc(data_args, training_args, model_args, datasets, tokenizer, model)
     
+def run_dpr_retrieval(tokenizer, datasets, training_args, data_args, model_args):
+    print('Check settings for dpr training')
+    args = TrainingArguments(
+        output_dir="dense_retireval",
+        evaluation_strategy="epoch",
+        learning_rate=1e-5,
+        per_device_train_batch_size=20,
+        per_device_eval_batch_size=20,
+        num_train_epochs=1,
+        weight_decay=0.01
+    )
+    num_sample = None # 디버깅과 빠른 실행을 원한다면 100으로 설정하세요.
+    num_pre_batch = 0 #pre-batch negatives에 사용될 개수입니다.
+    t_or_f = True #overide의 True, False 여부입니다.
+    topk = data_args.top_k_retrieval
+    model_name = 'klue/bert-base'
+    p_encoder = dprBertEncoder.from_pretrained(model_name).to(args.device)
+    q_encoder = dprBertEncoder.from_pretrained(model_name).to(args.device)
+    retriever = dprDenseRetrieval(args=args,
+                            tokenizer=tokenizer, p_encoder=p_encoder, q_encoder=q_encoder,
+                            num_sample=num_sample
+                            )
+    retriever.train(override=t_or_f, num_pre_batch=num_pre_batch)
+    retriever.get_p_embedding(override=t_or_f)
+    retriever.get_testq_embedding(override=t_or_f)
+    retriever.get_validq_embedding(override=t_or_f)
+    df = retriever.retrieve(query_or_dataset=datasets['validation'], topk=topk)
     
+    if df.columns.values.tolist() == ['question', 'id', 'context', 'original_context', 'answers']:
+        # if run a evaluation on validation set:
+        # You should run this code to match df.columns with f=Features().
+        df = df.drop(columns='original_context')
+    
+    # test data 에 대해선 정답이 없으므로 id question context 로만 데이터셋이 구성됩니다.
+    if training_args.do_predict:
+        f = Features(
+            {
+                "context": Value(dtype="string", id=None),
+                "id": Value(dtype="string", id=None),
+                "question": Value(dtype="string", id=None),
+            }
+        )
+
+    # train data 에 대해선 정답이 존재하므로 id question context answer 로 데이터셋이 구성됩니다.
+    elif training_args.do_eval:
+        f = Features(
+            {
+                "answers": Sequence(
+                    feature={
+                        "text": Value(dtype="string", id=None),
+                        "answer_start": Value(dtype="int32", id=None),
+                    },
+                    length=-1,
+                    id=None,
+                ),
+                "context": Value(dtype="string", id=None),
+                "id": Value(dtype="string", id=None),
+                "question": Value(dtype="string", id=None),
+            }
+        )
+    datasets = DatasetDict({"validation": Dataset.from_pandas(df, features=f)})
+    return datasets
+
 
 def run_sparse_retrieval(
     tokenize_fn: Callable[[str], List[str]],
