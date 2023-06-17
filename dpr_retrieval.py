@@ -110,10 +110,14 @@ class DenseRetrieval:
             wiki_dataset, batch_size=self.args.per_device_train_batch_size, drop_last=False)
 
 
-    def train(self, override: bool=False):
+    def train(self, override: bool=False, num_pre_batch: int=0):
         '''
         p_encoder와 q_encoder를 학습합니다.
         저장된 stats_dict가 없으면 저장하고, 있으면 로드합니다.
+
+        Args:
+            override: True라면 무조건 학습을 다시 시작합니다.
+            num_pre_batch: pre-batch negatives에 사용될 p_outputs의 숫자입니다.
         '''
         p_name = f'p_encoder_statesdict'
         q_name = f'q_encoder_statesdict'
@@ -156,8 +160,12 @@ class DenseRetrieval:
         self.q_encoder.zero_grad()
         torch.cuda.empty_cache()
 
+        import GPUtil as GPU
+        ##
+
         train_iterator = tqdm(range(int(self.args.num_train_epochs)), desc="Epoch")
         for _ in train_iterator:
+            p_deque = deque(maxlen=num_pre_batch+1) #자기 자신 포함이라 +1
             with tqdm(self.train_dataloader, desc='train', unit="batch") as tepoch:
                 for batch in tepoch:
                     self.p_encoder.train()
@@ -180,7 +188,17 @@ class DenseRetrieval:
 
                     p_outputs = self.p_encoder(**p_inputs)
                     q_outputs = self.q_encoder(**q_inputs)
+                    # GPU.showUtilization()
+                    # print('\n', '@@ current memory')
                     # (batch_size, emb_dim)
+
+                    ## pre-batch negatives 
+                    p_deque.append(p_outputs.detach()) # max_len 선언됨
+                    for i in range(len(p_deque)-1):
+                        temp = p_deque.popleft()
+                        p_outputs = torch.cat((p_outputs, temp), dim=0)
+                        p_deque.append(temp)
+                    ## pre-batch negatives 
 
                     # Calculate similarity score & loss
                     sim_scores = torch.matmul(q_outputs, torch.transpose(
@@ -453,17 +471,20 @@ if __name__ == '__main__':
 
     # 메모리가 부족한 경우 일부만 사용하세요 !
     num_sample = None  # None or positive integer
+    num_pre_batch = 0
+    t_or_f = True
+    topk = 10
 
     args = TrainingArguments(
         output_dir="dense_retireval",
         evaluation_strategy="epoch",
-        learning_rate=1e-5,
-        per_device_train_batch_size=20,
-        per_device_eval_batch_size=20,
-        num_train_epochs=2,
+        learning_rate=1e-3,
+        per_device_train_batch_size=6,
+        per_device_eval_batch_size=6,
+        num_train_epochs=3,
         weight_decay=0.01
     )
-    model_checkpoint = 'klue/bert-base'
+    model_checkpoint = 'klue/roberta-large'
 
     # 혹시 위에서 사용한 encoder가 있다면 주석처리 후 진행해주세요 (CUDA ...)
     tokenizer = AutoTokenizer.from_pretrained(model_checkpoint, use_fast=True)
@@ -476,14 +497,11 @@ if __name__ == '__main__':
                             tokenizer=tokenizer, p_encoder=p_encoder, q_encoder=q_encoder,
                             num_sample=num_sample
                             )
-    retriever.train(override=True) # bert-base, 전체 train_dataset 기준 1에폭에 5분. 
-    retriever.get_p_embedding(override=True) # 5.6만 개에 9분
-    retriever.get_testq_embedding(override=True) #600개 - 빠름.
-    retriever.get_validq_embedding(override=True) #240개 - 빠름.
-
-    # query = '대통령을 포함한 미국의 행정부 견제권을 갖는 국가 기관은?' #인덱스 0은 아니고 13000 근처
-    # query = '카타카나는 일본어에서 사용하는 무슨 문자인가?' #인덱스 35
-    topk=10
+    retriever.train(override=t_or_f, num_pre_batch=num_pre_batch) # bert-base, 전체 train_dataset 기준 1에폭에 5분. 
+    raise Exception
+    retriever.get_p_embedding(override=t_or_f) # 5.6만 개에 9분
+    retriever.get_testq_embedding(override=t_or_f) #600개 - 빠름.
+    retriever.get_validq_embedding(override=t_or_f) #240개 - 빠름.
     results = retriever.retrieve(query_or_dataset=train_dataset, topk=topk)
 
     print('Now print results')
@@ -500,9 +518,14 @@ if __name__ == '__main__':
     except:
         print('topk retrieval rate can\'t be printed. It is not train-valid set')
 
-    #lr 1e-5, batch 20, epochs 3,
-    #topk, retrieval rate
-    #10, 82.916
-    #20, 89.583
-    #50, 93.333
-    #100,97.983
+    #lr 1e-5, batch 20, epochs 3, klue/bert-base, 4분45초
+    #topk,  retriev r,  pre-batch8, p-b4,   p-b2
+    #10,    82.916,     72.916      75.0    73.75
+    #20,    89.583,     79.583      81.666  82.083
+    #50,    93.333,     88.333      89.583  91.666
+    #100,   97.983,     92.5        94.166  94.166
+
+    #lr 1e-3, batch 6, epochs 3, klue/roberta-large, 17분29초 #1에폭에 로스1.4
+    #lr 1e-4, batch 6, epochs 3, klue/roberta-large, 17분29초 #1에폭에 로스1.5
+    #lr 1e-5, batch 6, epochs 3, klue/roberta-large, 17분29초 #1에폭에 로스1.5
+    #lr 1e-6, batch 6, epochs 3, klue/roberta-large, 17분29초 #1에폭에 로스1.6

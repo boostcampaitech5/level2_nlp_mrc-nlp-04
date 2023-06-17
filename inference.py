@@ -113,8 +113,11 @@ def run_dense_retrieval(tokenizer, model_checkpoint, datasets, data_args, traini
         num_train_epochs=5,
         weight_decay=0.01
     )
-    num_sample=None
-    model_checkpoint=model_checkpoint
+    num_sample = None
+    num_pre_batch = 0
+    t_or_f = False
+    topk = data_args.top_k_retrieval
+    model_checkpoint = model_checkpoint
     ## 사전학습+파인튜닝된 train의 마지막 checkpoint에서 불러옵니다.
     ## reader와 retriever의 모델을 다른 걸 쓰고 싶다면 달리 명시해야 합니다.
     p_encoder = BertEncoder.from_pretrained(model_checkpoint).to(args.device)
@@ -123,11 +126,11 @@ def run_dense_retrieval(tokenizer, model_checkpoint, datasets, data_args, traini
                             tokenizer=tokenizer, p_encoder=p_encoder, q_encoder=q_encoder,
                             num_sample=num_sample
                             )
-    retriever.train(override=False) # bert-base, 전체 train_dataset 기준 1에폭에 5분. 
-    retriever.get_p_embedding(override=False) # 1만 개에 1.2분
-    retriever.get_testq_embedding(override=False) #700개 - 빠름.
-    retriever.get_validq_embedding(override=False) #240개 - 빠름.
-    df = retriever.retrieve(query_or_dataset=datasets['validation'], topk=data_args.top_k_retrieval)
+    retriever.train(override=t_or_f, num_pre_batch=num_pre_batch) # bert-base, 전체 train_dataset 기준 1에폭에 5분. 
+    retriever.get_p_embedding(override=t_or_f) # 1만 개에 1.2분
+    retriever.get_testq_embedding(override=t_or_f) #700개 - 빠름.
+    retriever.get_validq_embedding(override=t_or_f) #240개 - 빠름.
+    df = retriever.retrieve(query_or_dataset=datasets['validation'], topk=topk)
     
 
     if ('original_context' in df.columns) and ('answers' in df.columns):
