@@ -135,6 +135,11 @@ def run_sparse_retrieval(
     else:
         df = retriever.retrieve(datasets["validation"], topk=data_args.top_k_retrieval)
 
+    if df.columns.values.tolist() == ['question', 'id', 'context', 'original_context', 'answers']:
+        # if run a evaluation on validation set:
+        # You should run this code to match df.columns with f=Features().
+        df = df.drop(columns='original_context')
+
     # test data 에 대해선 정답이 없으므로 id question context 로만 데이터셋이 구성됩니다.
     if training_args.do_predict:
         f = Features(

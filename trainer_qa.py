@@ -65,7 +65,7 @@ class QuestionAnsweringTrainer(Trainer):
 
         if self.post_process_function is not None and self.compute_metrics is not None:
             eval_preds = self.post_process_function(
-                eval_examples, eval_dataset, output.predictions, self.args, self.data_args, self.eval_examples
+                eval_examples, eval_dataset, output.predictions, self.args
             )
             metrics = self.compute_metrics(eval_preds)
 
