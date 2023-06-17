@@ -113,6 +113,6 @@ class QuestionAnsweringTrainer(Trainer):
         self.post_process_function = 
         '''
         predictions = self.post_process_function(
-            test_examples, test_dataset, output.predictions, self.args, self.data_args, self.eval_examples
+            test_examples, test_dataset, output.predictions, self.args
         )
         return predictions
