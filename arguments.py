@@ -1,7 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-
 @dataclass
 class ModelArguments:
     """
@@ -35,7 +34,7 @@ class DataTrainingArguments:
     """
 
     dataset_name: Optional[str] = field(
-        default="/opt/ml/input/data/train_dataset",
+        default="../input/data/train_dataset",
         metadata={"help": "The name of the dataset to use."},
     )
     overwrite_cache: bool = field(
@@ -90,3 +89,15 @@ class DataTrainingArguments:
     use_faiss: bool = field(
         default=False, metadata={"help": "Whether to build with faiss"}
     )
+    inference_mode: str = field(
+        default='bm25',
+        metadata={'help': 'Define a mode to retrieve. Choose between "bm25", "base", "dpr"'}
+    )
+    
+@dataclass
+class CustomArguments:
+    mode: str = field(
+        default='train',
+        metadata={'help': 'Define a mode to enter using a main.py. Choose between "train" and "inference"'}
+    )
+        
