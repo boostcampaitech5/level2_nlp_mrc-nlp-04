@@ -161,7 +161,7 @@ class dprDenseRetrieval:
 
         train_iterator = tqdm(range(int(self.args.num_train_epochs)), desc="Epoch")
         for _ in train_iterator:
-            p_deque = deque(maxlen=num_pre_batch+1) #자기 자신 포함이라 +1
+            p_deque = deque(maxlen=num_pre_batch)
             with tqdm(self.train_dataloader, desc='train', unit="batch") as tepoch:
                 for batch in tepoch:
                     self.p_encoder.train()
@@ -189,11 +189,9 @@ class dprDenseRetrieval:
                     # (batch_size, emb_dim)
 
                     ## pre-batch negatives 
-                    p_deque.append(p_outputs.detach()) # max_len 선언됨
-                    for i in range(len(p_deque)-1):
-                        temp = p_deque.popleft()
-                        p_outputs = torch.cat((p_outputs, temp), dim=0)
-                        p_deque.append(temp)
+                    temp = p_outputs.clone().detach()
+                    p_outputs = torch.cat((p_outputs, *p_deque), dim=0)
+                    p_deque.append(temp)
                     ## pre-batch negatives 
 
                     # Calculate similarity score & loss
@@ -451,15 +449,15 @@ if __name__ == '__main__':
     num_sample = None  # None or positive integer
     num_pre_batch = 0
     t_or_f = True
-    topk = 10
+    topk = 1
 
     args = TrainingArguments(
         output_dir="dense_retireval",
         evaluation_strategy="epoch",
-        learning_rate=1e-3,
-        per_device_train_batch_size=6,
-        per_device_eval_batch_size=6,
-        num_train_epochs=3,
+        learning_rate=1e-5,
+        per_device_train_batch_size=20,
+        per_device_eval_batch_size=20,
+        num_train_epochs=2,
         weight_decay=0.01
     )
     model_checkpoint = 'klue/bert-base'

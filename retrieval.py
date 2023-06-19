@@ -450,10 +450,9 @@ class BM25(Retrieval):
 if __name__ == "__main__":
 
     import argparse
-
     parser = argparse.ArgumentParser(description="")
     parser.add_argument(
-        "--dataset_name", default="../data/train_dataset", type=str, help=""
+        "--dataset_name", default="../input/data/train_dataset", type=str, help=""
     )
     parser.add_argument(
         "--model_name_or_path",
@@ -461,7 +460,7 @@ if __name__ == "__main__":
         type=str,
         help="",
     )
-    parser.add_argument("--data_path", default="../data", type=str, help="")
+    parser.add_argument("--data_path", default="../input/data", type=str, help="")
     parser.add_argument(
         "--context_path", default="wikipedia_documents.json", type=str, help=""
     )
@@ -474,7 +473,7 @@ if __name__ == "__main__":
     org_dataset = load_from_disk(args.dataset_name)
     full_ds = concatenate_datasets(
         [
-            org_dataset["train"].flatten_indices(),
+            # org_dataset["train"].flatten_indices(),
             org_dataset["validation"].flatten_indices(),
         ]
     )  # train dev 를 합친 4192 개 질문에 대해 모두 테스트
@@ -487,7 +486,7 @@ if __name__ == "__main__":
     )
     
     ## 여기서 default는 bm25로 설정
-    retriever = BM25(tokenize_fn = tokenizer.tokenize(max_length = 512), data_path=args.data_path, context_path=args.context_path)
+    retriever = BM25(tokenize_fn = tokenizer.tokenize, data_path=args.data_path, context_path=args.context_path)
     
     retriever.get_sparse_embedding()
 
@@ -508,12 +507,17 @@ if __name__ == "__main__":
 
     else:
         with timer("bulk query by exhaustive search"):
-            df = retriever.retrieve(full_ds)
-            df["correct"] = df["original_context"] == df["context"]
+            topk=1
+            df = retriever.retrieve(full_ds, topk=topk)
+            # df["correct"] = df["original_context"] in df["context"]
+            df['correct'] = df.apply(lambda row:
+                row['original_context'] in row['context'], axis=1)
             print(
                 "correct retrieval result by exhaustive search",
                 df["correct"].sum() / len(df),
             )
-
+            for i in range(10):
+                print(df['context'][i][:30])
+                print(df['original_context'][i][:30])
         with timer("single query by exhaustive search"):
             scores, indices = retriever.retrieve(query)
