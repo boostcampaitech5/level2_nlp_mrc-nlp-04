@@ -80,12 +80,12 @@ class dprDenseRetrieval:
         self.train_dataloader = DataLoader(
             train_dataset, shuffle=True, batch_size=self.args.per_device_train_batch_size, drop_last=False)
         ###################################
-        valid_p_seqs = self.tokenizer(
-            self.valid_dataset['context'], padding="max_length",
+        valid_q_seqs = self.tokenizer(
+            self.valid_dataset['question'], padding="max_length",
             truncation=True, return_tensors='pt'
         )
         valid_dataset = TensorDataset(
-            valid_p_seqs['input_ids'], valid_p_seqs['attention_mask'], valid_p_seqs['token_type_ids']
+            valid_q_seqs['input_ids'], valid_q_seqs['attention_mask'], valid_q_seqs['token_type_ids']
         )
         self.valid_dataloader = DataLoader(
             valid_dataset, batch_size=self.args.per_device_train_batch_size, drop_last=False)
@@ -161,7 +161,7 @@ class dprDenseRetrieval:
 
         train_iterator = tqdm(range(int(self.args.num_train_epochs)), desc="Epoch")
         for _ in train_iterator:
-            p_deque = deque(maxlen=num_pre_batch+1) #자기 자신 포함이라 +1
+            p_deque = deque(maxlen=num_pre_batch)
             with tqdm(self.train_dataloader, desc='train', unit="batch") as tepoch:
                 for batch in tepoch:
                     self.p_encoder.train()
@@ -189,11 +189,9 @@ class dprDenseRetrieval:
                     # (batch_size, emb_dim)
 
                     ## pre-batch negatives 
-                    p_deque.append(p_outputs.detach()) # max_len 선언됨
-                    for i in range(len(p_deque)-1):
-                        temp = p_deque.popleft()
-                        p_outputs = torch.cat((p_outputs, temp), dim=0)
-                        p_deque.append(temp)
+                    temp = p_outputs.clone().detach()
+                    p_outputs = torch.cat((p_outputs, *p_deque), dim=0)
+                    p_deque.append(temp)
                     ## pre-batch negatives 
 
                     # Calculate similarity score & loss
@@ -450,15 +448,15 @@ if __name__ == '__main__':
     # 메모리가 부족한 경우 일부만 사용하세요 !
     num_sample = None  # None or positive integer
     num_pre_batch = 0
-    t_or_f = True
+    t_or_f = False
     topk = 10
 
     args = TrainingArguments(
         output_dir="dense_retireval",
         evaluation_strategy="epoch",
-        learning_rate=1e-3,
-        per_device_train_batch_size=6,
-        per_device_eval_batch_size=6,
+        learning_rate=1e-5,
+        per_device_train_batch_size=20,
+        per_device_eval_batch_size=20,
         num_train_epochs=3,
         weight_decay=0.01
     )

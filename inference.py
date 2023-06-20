@@ -323,6 +323,8 @@ def run_mrc(
         features,
         predictions: Tuple[np.ndarray, np.ndarray],
         training_args: TrainingArguments,
+        not_using1,
+        not_using2
     ) -> EvalPrediction:
         # Post-processing: start logits과 end logits을 original context의 정답과 match시킵니다.
         predictions = postprocess_qa_predictions(
