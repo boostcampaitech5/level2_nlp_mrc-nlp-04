@@ -14,6 +14,8 @@ from tqdm.auto import tqdm
 from rank_bm25 import BM25Okapi
 from transformers import AutoTokenizer
 
+from elasticsearch import Elasticsearch
+
 @contextmanager
 def timer(name):
     t0 = time.time()
@@ -446,6 +448,61 @@ class BM25(Retrieval):
             
         return doc_scores, doc_indices
 
+
+class ElasticSearchRetrieval:
+    def __init__(self, url: str, api_key: str):
+        self.es = Elasticsearch(url, api_key=api_key)
+
+    def retrieve_faiss(*args):
+        raise Exception("Elastic Search는 faiss를 사용하지 않습니다. \"--use_faiss\"을 제거해주세요. ")
+    
+    def retrieve(
+        self, query_or_dataset: Union[str, Dataset], topk: Optional[int] = 1
+    ) -> Union[Tuple[List, List], pd.DataFrame]:
+        list_original = []
+        list_find = []
+        list_question = []
+
+        for query in tqdm(query_or_dataset):
+            resp = self._get_relevant_doc(str(query["question"]))
+            list_question.append(query["question"])
+            list_original.append(query["context"])
+            # print(resp)
+            # print(resp[0]["_source"]["description"])
+            list_find.append(resp[0]["_source"]["description"])
+
+        df_docs = pd.DataFrame({"original_context": list_original, "context": list_find})
+
+        return df_docs
+
+    def get_sparse_embedding(self):
+        pass
+
+    def _get_relevant_doc(self, query: str) -> dict:
+        return self.es.search(index="search-wiki", body={'query':{'match':{'description': query}}, "sort": ["hits:hits:_score"]})["hits"]["hits"]
+
+    def get_relevant_doc(self, query: str, k: Optional[int] = 1) -> Tuple[List, List]:
+        resp = self._get_relevant_doc(str(query["question"]))
+        list_score = []
+        list_doc = []
+
+        for doc in resp:
+            list_score.append(doc["_score"])
+            list_doc.append(doc["_source"]["description"])
+
+        return (list_score[:k], list_doc[:k])
+
+    def get_relevant_doc_bulk(self, queries: List, k: Optional[int] = 1) -> Tuple[List, List]:
+        list_scores = []
+        list_docs = []
+
+        for query in queries:
+            list_score, list_doc = self.get_relevant_doc(query, k)
+            list_scores.append(list_score)
+            list_docs.append(list_doc)
+
+        return (list_scores, list_docs)
+
              
 if __name__ == "__main__":
 
@@ -488,6 +545,7 @@ if __name__ == "__main__":
     
     ## 여기서 default는 bm25로 설정
     retriever = BM25(tokenize_fn = tokenizer.tokenize(max_length = 512), data_path=args.data_path, context_path=args.context_path)
+    # retriever = ElasticSearchRetrieval("https://93b7fa3dc11f4559bb9dfc8502a17d74.us-central1.gcp.cloud.es.io:443", "QlB5STBZZ0JXcUdBbWs3SHh6Rmk6b192OXlqT2tSbm1ZVEQybkZuX3JsZw==")
     
     retriever.get_sparse_embedding()
 
