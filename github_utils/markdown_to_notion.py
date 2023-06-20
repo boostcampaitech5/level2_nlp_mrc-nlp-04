@@ -17,10 +17,10 @@ def main(title):
 
 	query_json = '''{
 		    "parent": {
-		        "database_id": "64a8016ef93f4829a090b9c0df0372cd"
+		        "database_id": "8ba8c58faa75494a8e7afb7f7a2356c6"
 		    },
 		    "properties": {
-		        "Base Model": {
+		        "선행 작업": {
 		            "type": "relation",
 		            "relation": [
 
@@ -30,10 +30,6 @@ def main(title):
 		        "Github Issue": {
 		            "type": "url",
 		            "url": null
-		        },
-		        "읽은이": {
-		            "type": "people",
-		            "people": []
 		        },
 		        "담당자": {
 		            "type": "people",
@@ -62,12 +58,11 @@ def main(title):
 		                }
 		            ]
 		        },
-		        "현재 상태": {
-					"type": "status",
-					"status": {
-						"id": "c35f48eb-6572-403f-a50c-be26e288f107",
-                        "name": "Complete",
-                        "color": "green"
+		        "상태": {
+				"type": "status",
+				"status": {	
+		                        "name": "완료",
+		                        "color": "green"
 					}
 				}
 		    },
