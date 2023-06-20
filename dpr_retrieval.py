@@ -80,12 +80,12 @@ class dprDenseRetrieval:
         self.train_dataloader = DataLoader(
             train_dataset, shuffle=True, batch_size=self.args.per_device_train_batch_size, drop_last=False)
         ###################################
-        valid_p_seqs = self.tokenizer(
-            self.valid_dataset['context'], padding="max_length",
+        valid_q_seqs = self.tokenizer(
+            self.valid_dataset['question'], padding="max_length",
             truncation=True, return_tensors='pt'
         )
         valid_dataset = TensorDataset(
-            valid_p_seqs['input_ids'], valid_p_seqs['attention_mask'], valid_p_seqs['token_type_ids']
+            valid_q_seqs['input_ids'], valid_q_seqs['attention_mask'], valid_q_seqs['token_type_ids']
         )
         self.valid_dataloader = DataLoader(
             valid_dataset, batch_size=self.args.per_device_train_batch_size, drop_last=False)
@@ -448,8 +448,8 @@ if __name__ == '__main__':
     # 메모리가 부족한 경우 일부만 사용하세요 !
     num_sample = None  # None or positive integer
     num_pre_batch = 0
-    t_or_f = True
-    topk = 1
+    t_or_f = False
+    topk = 10
 
     args = TrainingArguments(
         output_dir="dense_retireval",
@@ -457,7 +457,7 @@ if __name__ == '__main__':
         learning_rate=1e-5,
         per_device_train_batch_size=20,
         per_device_eval_batch_size=20,
-        num_train_epochs=2,
+        num_train_epochs=3,
         weight_decay=0.01
     )
     model_checkpoint = 'klue/bert-base'
