@@ -10,6 +10,7 @@ from datasets import DatasetDict, concatenate_datasets
 from torch.utils.data import DataLoader, RandomSampler, TensorDataset
 from typing import List
 from CustomScheduler import CosineAnnealingWarmUpRestarts
+from BM25Embedding import make_bm25_embedding
 
 # TODO: Compute Metric 구현
 class BiEncoderTrainer:
@@ -33,7 +34,7 @@ class BiEncoderTrainer:
 			warmup_rate: warmup 비율
 	"""
 	def __init__(self,
-				 q_encoder, p_encoder, tokenizer, batch_size=16, epochs=3, lr=3e-5, gradient_accumulation_steps=1,
+				 q_encoder, p_encoder, tokenizer, batch_size=16, epochs=3, lr=3e-5,
 				 train_datasets=None, eval_datasets=None, contexts_document=None, q_max_length=50, p_max_length=300, neg_num=2, warmup_rate=0.1):
 
 		self.scheduler = None
@@ -48,7 +49,6 @@ class BiEncoderTrainer:
 		self.batch_size = batch_size
 		self.epochs = epochs
 		self.lr = lr
-		self.gradient_accumulation_steps = gradient_accumulation_steps
 
 		self.train_datasets = train_datasets
 		self.eval_datasets = eval_datasets
@@ -60,9 +60,16 @@ class BiEncoderTrainer:
 
 		self.full_ds = concatenate_datasets([train_datasets.flatten_indices(),
 											 eval_datasets.flatten_indices()])
-		print("BM25 Model Loading... \n ** It takes a long time. **")
-		with open(os.path.join(os.getcwd(), "input", "data", "wiki_bm25_embedding.bin"), "rb") as f:
-			self.bm25 = pd.DataFrame(pickle.load(f), index=self.full_ds['id'])
+		print("BM25 Embedding Loading... \n ** It takes a long time. **")
+		if os.path.exists(os.path.join(os.getcwd(), "input", "data", "wiki_bm25_embedding.bin")):
+			with open(os.path.join(os.getcwd(), "input", "data", "wiki_bm25_embedding.bin"), "rb") as f:
+				self.bm25 = pd.DataFrame(pickle.load(f), index=self.full_ds['id'])
+		else:
+			print("BM25 Model is not exist. Make BM25 Embedding.")
+			self.bm25 = make_bm25_embedding(DATA_DIR=os.path.join(os.getcwd(), "input", "data"),
+										   tokenizer=self.tokenizer,
+										   full_ds=self.full_ds,
+										   contexts=self.contexts_document)
 		self.p_encoder_path = os.path.join(os.getcwd(), "input", "code", "dpr",
 										   self.p_encoder.config.name_or_path.replace("/", "_"), "p_encoder")
 		self.q_encoder_path = os.path.join(os.getcwd(), "input", "code", "dpr",
@@ -169,17 +176,14 @@ class BiEncoderTrainer:
 						correct_cnt += 1
 
 				loss = torch.nn.functional.nll_loss(sim_score, targets)
-				loss = loss / self.gradient_accumulation_steps
 
 				loss.backward()
-				if (step + 1) % self.gradient_accumulation_steps == 0:
-					self.optimizer.step()
-					self.scheduler.step()
-					self.p_encoder.zero_grad()
-					self.q_encoder.zero_grad()
-					avg_loss += loss / len(train_dataloader)
+				self.optimizer.step()
+				self.scheduler.step()
+				self.p_encoder.zero_grad()
+				self.q_encoder.zero_grad()
 
-				epoch_iterator.set_postfix_str(f"Loss = {loss.detach():.4f}, AVG Loss = {avg_loss:.4e} lr = {self.optimizer.param_groups[0]['lr']:.4e}")
+				epoch_iterator.set_postfix_str(f"Loss = {loss.detach():.4f}, lr = {self.optimizer.param_groups[0]['lr']:.4e}")
 				global_step += 1
 
 				torch.cuda.empty_cache()
@@ -188,7 +192,7 @@ class BiEncoderTrainer:
 
 			self.eval()
 
-			if epoch != self.epochs:
+			if epoch != self.epochs-1:
 				self.p_encoder.save_pretrained(self.p_encoder_path + "_epoch" + str(epoch))
 				self.q_encoder.save_pretrained(self.q_encoder_path + "_epoch" + str(epoch))
 			else:
