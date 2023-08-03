@@ -74,4 +74,4 @@ Test Data는 `id`, `question` 만 공개되어 있다.
 
 # 🔗 링크
 
-- [Warp-up report](assets/docs/NLP_04_Wrap-Up_Report_MRC.pdf)
+- [Wrap-up report](assets/docs/NLP_04_Wrap-Up_Report_MRC.pdf)
